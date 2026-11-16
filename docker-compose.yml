@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: decisiontrace_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-decisiontrace}
+      POSTGRES_USER: ${POSTGRES_USER:-dtuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dtpassword}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dtuser} -d ${POSTGRES_DB:-decisiontrace}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prefect-server:
+    image: prefecthq/prefect:2-python3.11
+    container_name: decisiontrace_prefect
+    restart: unless-stopped
+    command: prefect server start --host 0.0.0.0
+    ports:
+      - "4200:4200"
+    environment:
+      PREFECT_API_DATABASE_CONNECTION_URL: "sqlite+aiosqlite:////prefect/prefect.db"
+    volumes:
+      - prefect_data:/prefect
+
+  app:
+    build: .
+    container_name: decisiontrace_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://dtuser:dtpassword@postgres:5432/decisiontrace
+      PREFECT_API_URL: http://prefect-server:4200/api
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: ["python", "pipelines/full_pipeline.py"]
+
+volumes:
+  postgres_data:
+  prefect_data:

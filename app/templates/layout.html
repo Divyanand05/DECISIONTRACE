@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DecisionTrace AI</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d2e; --card: #22263a;
+    --accent: #4f8ef7; --green: #22c55e; --red: #ef4444;
+    --orange: #f97316; --yellow: #eab308;
+    --text: #e2e8f0; --muted: #94a3b8; --border: #2d3348;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', sans-serif; display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 220px; background: var(--surface); border-right: 1px solid var(--border); padding: 24px 0; position: fixed; height: 100vh; }
+  .sidebar .logo { padding: 0 20px 24px; border-bottom: 1px solid var(--border); }
+  .sidebar .logo h1 { font-size: 16px; font-weight: 700; color: var(--accent); }
+  .sidebar .logo p  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  .sidebar nav { padding: 16px 0; }
+  .sidebar nav a { display: flex; align-items: center; gap: 10px; padding: 10px 20px;
+                   color: var(--muted); text-decoration: none; font-size: 13px; transition: all .2s; }
+  .sidebar nav a:hover { color: var(--text); background: var(--card); }
+  .sidebar nav a.active { color: var(--accent); background: var(--card); border-left: 3px solid var(--accent); }
+  .sidebar nav a .icon { font-size: 16px; }
+
+  /* Main */
+  .main { margin-left: 220px; padding: 28px 32px; flex: 1; }
+  .page-title { font-size: 22px; font-weight: 700; margin-bottom: 6px; }
+  .page-sub   { font-size: 13px; color: var(--muted); margin-bottom: 24px; }
+
+  /* KPI Cards */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px; }
+  .kpi-card .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .kpi-card .value { font-size: 26px; font-weight: 700; margin-top: 6px; }
+  .kpi-card .value.green { color: var(--green); }
+  .kpi-card .value.red   { color: var(--red); }
+  .kpi-card .value.blue  { color: var(--accent); }
+  .kpi-card .value.orange{ color: var(--orange); }
+  .kpi-card .sub  { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* Grid layouts */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+
+  /* Panel */
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .panel h3 { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; }
+
+  /* Chart container */
+  .chart-wrap { position: relative; height: 220px; }
+
+  /* Table */
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; padding: 8px 12px; color: var(--muted); border-bottom: 1px solid var(--border);
+       font-weight: 600; font-size: 11px; text-transform: uppercase; }
+  td { padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(79,142,247,.05); }
+
+  /* Badge */
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 600; }
+  .badge.critical { background: rgba(239,68,68,.2);  color: var(--red); }
+  .badge.warning  { background: rgba(249,115,22,.2); color: var(--orange); }
+  .badge.info     { background: rgba(234,179,8,.2);  color: var(--yellow); }
+  .badge.matched  { background: rgba(34,197,94,.2);  color: var(--green); }
+  .badge.unmatched{ background: rgba(239,68,68,.2);  color: var(--red); }
+  .badge.partial  { background: rgba(249,115,22,.2); color: var(--orange); }
+
+  /* Progress bar */
+  .progress { background: var(--border); border-radius: 4px; height: 8px; }
+  .progress-fill { height: 8px; border-radius: 4px; transition: width .5s; }
+
+  /* Replay diff */
+  .replay-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; align-items: center;
+                 gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .replay-row:last-child { border-bottom: none; }
+  .arrow-up   { color: var(--red); font-weight: 700; }
+  .arrow-down { color: var(--green); font-weight: 700; }
+  .arrow-flat { color: var(--muted); }
+
+  /* Score ring */
+  .score-wrap { display: flex; align-items: center; gap: 24px; margin-bottom: 20px; }
+  .score-ring { width: 100px; height: 100px; border-radius: 50%;
+                background: conic-gradient(var(--orange) 0% 58.25%, var(--border) 58.25% 100%);
+                display: flex; align-items: center; justify-content: center; }
+  .score-inner { width: 76px; height: 76px; border-radius: 50%; background: var(--card);
+                 display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: var(--orange); }
+  .score-legend p { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  .score-legend strong { font-size: 14px; color: var(--text); }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<aside class="sidebar">
+  <div class="logo">
+    <h1>DecisionTrace AI</h1>
+    <p>Data Reliability Platform</p>
+  </div>
+  <nav>
+    <a href="/overview"       class="{{ 'active' if page=='overview' else '' }}">      <span class="icon">📊</span> Executive Overview</a>
+    <a href="/quality"        class="{{ 'active' if page=='quality' else '' }}">       <span class="icon">🛡️</span> Data Reliability</a>
+    <a href="/reconciliation" class="{{ 'active' if page=='reconciliation' else '' }}"><span class="icon">⚖️</span> Reconciliation</a>
+    <a href="/rootcause"      class="{{ 'active' if page=='rootcause' else '' }}">     <span class="icon">🔍</span> Root Cause</a>
+    <a href="/replay"         class="{{ 'active' if page=='replay' else '' }}">        <span class="icon">⏪</span> Decision Replay</a>
+  </nav>
+</aside>
+
+<!-- Main content -->
+<main class="main">
+
+{% if page == 'overview' %}
+<!-- ============================================================ PAGE 1 -->
+<div class="page-title">Executive Overview</div>
+<div class="page-sub">Live business metrics from verified transaction data</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="label">Total Orders</div>
+    <div class="value blue">{{ "{:,}".format(data.total_orders) }}</div></div>
+  <div class="kpi-card"><div class="label">Gross Revenue</div>
+    <div class="value green">₹{{ "{:,.0f}".format(data.gross_revenue) }}</div></div>
+  <div class="kpi-card"><div class="label">Net Revenue</div>
+    <div class="value green">₹{{ "{:,.0f}".format(data.net_revenue) }}</div></div>
+  <div class="kpi-card"><div class="label">Payment Success Rate</div>
+    <div class="value {{ 'green' if data.success_rate >= 80 else 'orange' }}">{{ data.success_rate }}%</div></div>
+  <div class="kpi-card"><div class="label">Total Refunds</div>
+    <div class="value orange">₹{{ "{:,.0f}".format(data.total_refunds) }}</div></div>
+  <div class="kpi-card"><div class="label">Duplicate Payments</div>
+    <div class="value red">{{ "{:,}".format(data.dup_payments) }}</div>
+    <div class="sub">flagged &amp; excluded</div></div>
+  <div class="kpi-card"><div class="label">Unmatched Transactions</div>
+    <div class="value red">{{ "{:,}".format(data.unmatched) }}</div>
+    <div class="sub">need investigation</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>Daily Net Revenue (last 30 days)</h3>
+    <div class="chart-wrap"><canvas id="revenueChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Payment Success Rate by Method</h3>
+    <div class="chart-wrap"><canvas id="methodChart"></canvas></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Payment Outcomes by Method</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Method</th><th>Success</th><th>Failed</th><th>Success Rate</th><th>Performance</th></tr>
+      {% for m in data.methods %}
+      <tr>
+        <td><strong>{{ m.method | upper }}</strong></td>
+        <td style="color:var(--green)">{{ "{:,}".format(m.success) }}</td>
+        <td style="color:var(--red)">{{ "{:,}".format(m.failure) }}</td>
+        <td>{{ m.rate }}%</td>
+        <td style="width:160px">
+          <div class="progress"><div class="progress-fill" style="width:{{ m.rate }}%;background:{{ 'var(--green)' if m.rate >= 80 else 'var(--orange)' }}"></div></div>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<script>
+const revDays    = {{ data.daily | map(attribute='day')     | list | tojson }};
+const revValues  = {{ data.daily | map(attribute='revenue') | list | tojson }};
+const methods    = {{ data.methods | map(attribute='method')  | list | tojson }};
+const rates      = {{ data.methods | map(attribute='rate')    | list | tojson }};
+
+new Chart(document.getElementById('revenueChart'), {
+  type:'line',
+  data:{ labels: revDays.reverse(),
+         datasets:[{label:'Net Revenue',data:revValues.reverse(),borderColor:'#4f8ef7',backgroundColor:'rgba(79,142,247,.1)',fill:true,tension:.4,pointRadius:0}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+           scales:{x:{ticks:{color:'#94a3b8',maxTicksLimit:8},grid:{color:'#2d3348'}},
+                   y:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}}}}
+});
+new Chart(document.getElementById('methodChart'), {
+  type:'bar',
+  data:{ labels: methods,
+         datasets:[{label:'Success Rate %',data:rates,backgroundColor:rates.map(r=>r>=80?'rgba(34,197,94,.7)':'rgba(249,115,22,.7)'),borderRadius:4}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+           scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}},
+                   y:{min:0,max:100,ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}}}}
+});
+</script>
+
+{% elif page == 'quality' %}
+<!-- ============================================================ PAGE 2 -->
+<div class="page-title">Data Reliability</div>
+<div class="page-sub">Quality checks across completeness, uniqueness, freshness and validity</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="label">Reliability Score</div>
+    <div class="value orange">{{ data.score }}/100</div>
+    <div class="sub">target: 80+</div></div>
+  <div class="kpi-card"><div class="label">Total Open Issues</div>
+    <div class="value red">{{ "{:,}".format(data.total) }}</div></div>
+  <div class="kpi-card"><div class="label">Critical Issues</div>
+    <div class="value red">{{ "{:,}".format(data.critical) }}</div>
+    <div class="sub">must resolve</div></div>
+</div>
+
+<div class="score-wrap">
+  <div class="score-ring"><div class="score-inner">{{ data.score }}</div></div>
+  <div class="score-legend">
+    <p>Overall reliability score based on 15 rules</p>
+    <strong>Score below 80 — critical failures detected</strong><br>
+    <span style="color:var(--muted);font-size:12px">Weighted: Completeness 35% · Uniqueness 30% · Freshness 20% · Validity 15%</span>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>Issues by Dimension</h3>
+    <div class="chart-wrap"><canvas id="dimChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Issues by Table</h3>
+    <div class="chart-wrap"><canvas id="tableChart"></canvas></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Open Quality Issues — Top 50</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Table</th><th>Rule</th><th>Severity</th><th>Violations</th><th>Description</th></tr>
+      {% for i in data.issues %}
+      <tr>
+        <td>{{ i.table }}</td>
+        <td style="font-family:monospace;font-size:11px">{{ i.rule }}</td>
+        <td><span class="badge {{ i.severity }}">{{ i.severity }}</span></td>
+        <td><strong>{{ "{:,}".format(i.count) }}</strong></td>
+        <td style="color:var(--muted)">{{ i.desc }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<script>
+const dimLabels = {{ data.summary | map(attribute='dimension') | list | tojson }};
+const dimCounts = {{ data.summary | map(attribute='count')     | list | tojson }};
+const tblLabels = {{ data.summary | map(attribute='table')     | list | tojson }};
+const tblCounts = {{ data.summary | map(attribute='open')      | list | tojson }};
+const dimColors = ['#4f8ef7','#22c55e','#f97316','#eab308'];
+const tblColors = ['#ef4444','#f97316','#eab308','#22c55e','#4f8ef7','#a855f7'];
+
+new Chart(document.getElementById('dimChart'), {
+  type:'doughnut',
+  data:{labels:dimLabels, datasets:[{data:dimCounts,backgroundColor:dimColors,borderWidth:0}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{color:'#e2e8f0',font:{size:12}}}}}
+});
+new Chart(document.getElementById('tableChart'), {
+  type:'bar',
+  data:{labels:tblLabels, datasets:[{label:'Open Issues',data:tblCounts,backgroundColor:'rgba(239,68,68,.7)',borderRadius:4}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+           scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}},
+                   y:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}}}}
+});
+</script>
+
+{% elif page == 'reconciliation' %}
+<!-- ============================================================ PAGE 3 -->
+<div class="page-title">Financial Reconciliation</div>
+<div class="page-sub">Order → Payment → Settlement matching across all transactions</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="label">Reconciliation Accuracy</div>
+    <div class="value {{ 'green' if data.accuracy >= 90 else 'orange' }}">{{ data.accuracy }}%</div></div>
+  <div class="kpi-card"><div class="label">Order–Payment Gap</div>
+    <div class="value red">₹{{ "{:,.0f}".format(data.order_gap) }}</div>
+    <div class="sub">unmatched orders</div></div>
+  <div class="kpi-card"><div class="label">Settlement Gap</div>
+    <div class="value red">₹{{ "{:,.0f}".format(data.sett_gap) }}</div>
+    <div class="sub">unsettled payments</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>Reconciliation Status by Type</h3>
+    <div class="chart-wrap"><canvas id="reconChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Status Summary</h3>
+    <div class="tbl-wrap">
+      <table>
+        <tr><th>Type</th><th>Status</th><th>Records</th><th>Gap (INR)</th></tr>
+        {% for r in data.overview %}
+        <tr>
+          <td style="font-size:11px">{{ r.type }}</td>
+          <td><span class="badge {{ r.status }}">{{ r.status }}</span></td>
+          <td>{{ "{:,}".format(r.count) }}</td>
+          <td style="color:{{ 'var(--red)' if r.diff > 0 else 'var(--green)' }}">
+            {{ "{:,.0f}".format(r.diff) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Unmatched Transactions — Top 50 by Gap</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Reference ID</th><th>Type</th><th>Expected (INR)</th><th>Actual (INR)</th><th>Difference</th></tr>
+      {% for u in data.unmatched %}
+      <tr>
+        <td style="font-family:monospace;font-size:11px">{{ u.id }}</td>
+        <td style="font-size:11px">{{ u.type }}</td>
+        <td>{{ "{:,.2f}".format(u.expected) }}</td>
+        <td>{{ "{:,.2f}".format(u.actual) }}</td>
+        <td style="color:var(--red);font-weight:600">{{ "{:,.2f}".format(u.diff) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<script>
+const reconTypes  = [...new Set({{ data.overview | map(attribute='type')   | list | tojson }})];
+const matchedD    = {{ data.overview | selectattr('status','eq','matched')   | map(attribute='count') | list | tojson }};
+const unmatchedD  = {{ data.overview | selectattr('status','eq','unmatched') | map(attribute='count') | list | tojson }};
+
+new Chart(document.getElementById('reconChart'), {
+  type:'bar',
+  data:{ labels: reconTypes,
+         datasets:[
+           {label:'Matched',   data:matchedD,   backgroundColor:'rgba(34,197,94,.7)',  borderRadius:4},
+           {label:'Unmatched', data:unmatchedD, backgroundColor:'rgba(239,68,68,.7)',  borderRadius:4}
+         ]},
+  options:{responsive:true,maintainAspectRatio:false,
+           plugins:{legend:{labels:{color:'#e2e8f0'}}},
+           scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}},
+                   y:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}}}}
+});
+</script>
+
+{% elif page == 'rootcause' %}
+<!-- ============================================================ PAGE 4 -->
+<div class="page-title">Root Cause Explorer</div>
+<div class="page-sub">What is causing the data issues and financial gaps</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card"><div class="label">Duplicate Payment Exposure</div>
+    <div class="value red">₹{{ "{:,.0f}".format(data.dup_exposure) }}</div>
+    <div class="sub">excluded duplicates</div></div>
+  <div class="kpi-card"><div class="label">Missing Payment Revenue</div>
+    <div class="value red">₹{{ "{:,.0f}".format(data.missing_pay) }}</div>
+    <div class="sub">orders with no payment</div></div>
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>Violations by Rule</h3>
+    <div class="chart-wrap" style="height:260px"><canvas id="ruleChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Critical Issues by Source Table</h3>
+    <div class="chart-wrap" style="height:260px"><canvas id="sourceChart"></canvas></div>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Violation Detail — Top 20 Rules</h3>
+  <div class="tbl-wrap">
+    <table>
+      <tr><th>Rule</th><th>Table</th><th>Severity</th><th>Count</th></tr>
+      {% for r in data.by_rule %}
+      <tr>
+        <td style="font-family:monospace;font-size:11px">{{ r.rule }}</td>
+        <td>{{ r.table }}</td>
+        <td><span class="badge {{ r.severity }}">{{ r.severity }}</span></td>
+        <td><strong>{{ "{:,}".format(r.count) }}</strong></td>
+      </tr>
+      {% endfor %}
+    </table>
+  </div>
+</div>
+
+<script>
+const ruleLabels = {{ data.by_rule | map(attribute='rule')  | list | tojson }};
+const ruleCounts = {{ data.by_rule | map(attribute='count') | list | tojson }};
+const srcLabels  = {{ data.by_table | map(attribute='table')    | list | tojson }};
+const srcCrit    = {{ data.by_table | map(attribute='critical') | list | tojson }};
+const srcWarn    = {{ data.by_table | map(attribute='warning')  | list | tojson }};
+
+new Chart(document.getElementById('ruleChart'), {
+  type:'bar',
+  data:{labels:ruleLabels,
+        datasets:[{label:'Violations',data:ruleCounts,backgroundColor:'rgba(239,68,68,.7)',borderRadius:4}]},
+  options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+           plugins:{legend:{display:false}},
+           scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}},
+                   y:{ticks:{color:'#94a3b8',font:{size:10}},grid:{color:'#2d3348'}}}}
+});
+new Chart(document.getElementById('sourceChart'), {
+  type:'bar',
+  data:{labels:srcLabels,
+        datasets:[
+          {label:'Critical',data:srcCrit,backgroundColor:'rgba(239,68,68,.7)',borderRadius:4},
+          {label:'Warning', data:srcWarn,backgroundColor:'rgba(249,115,22,.7)',borderRadius:4}
+        ]},
+  options:{responsive:true,maintainAspectRatio:false,
+           plugins:{legend:{labels:{color:'#e2e8f0'}}},
+           scales:{x:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}},
+                   y:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}}}}
+});
+</script>
+
+{% elif page == 'replay' %}
+<!-- ============================================================ PAGE 5 -->
+<div class="page-title">Decision Replay</div>
+<div class="page-sub">Compare original reported KPIs with corrected values after data fixes</div>
+
+<div class="panel" style="margin-bottom:20px">
+  <h3>KPI Version Comparison — v1 (Original) vs v2 (Corrected)</h3>
+  <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:12px;padding:8px 0;color:var(--muted);font-size:11px;text-transform:uppercase;border-bottom:1px solid var(--border)">
+    <span>KPI Name</span><span>v1 Original</span><span>v2 Corrected</span><span>Difference</span><span>Change</span>
+  </div>
+  {% for k in data.kpis %}
+  <div class="replay-row">
+    <div style="font-weight:600">{{ k.name.replace('_',' ').title() }}</div>
+    <div style="color:var(--muted)">{{ "{:,.2f}".format(k.v1) }}</div>
+    <div style="color:var(--accent)">{{ "{:,.2f}".format(k.v2) }}</div>
+    <div style="color:{{ 'var(--red)' if k.delta < 0 else ('var(--green)' if k.delta > 0 else 'var(--muted)') }};font-weight:600">
+      {{ "{:+,.2f}".format(k.delta) }}</div>
+    <div>
+      {% if k.delta > 0.01 %}<span class="arrow-up">▲ {{ "{:.2f}".format(k.pct) }}%</span>
+      {% elif k.delta < -0.01 %}<span class="arrow-down">▼ {{ "{:.2f}".format(k.pct|abs) }}%</span>
+      {% else %}<span class="arrow-flat">─ No change</span>{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="grid-2">
+  <div class="panel">
+    <h3>KPI Values Across Versions</h3>
+    <div class="chart-wrap"><canvas id="versionChart"></canvas></div>
+  </div>
+  <div class="panel">
+    <h3>Correction Events Timeline</h3>
+    <div class="tbl-wrap" style="max-height:220px;overflow-y:auto">
+      <table>
+        <tr><th>Time</th><th>Type</th><th>Description</th></tr>
+        {% for e in data.events %}
+        <tr>
+          <td style="font-size:10px;color:var(--muted)">{{ e.at }}</td>
+          <td><span class="badge warning">{{ e.type }}</span></td>
+          <td style="font-size:11px;color:var(--muted)">{{ e.desc[:60] }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+const kpiNames = {{ data.kpis | map(attribute='name') | list | tojson }};
+const v1vals   = {{ data.kpis | map(attribute='v1')   | list | tojson }};
+const v2vals   = {{ data.kpis | map(attribute='v2')   | list | tojson }};
+
+new Chart(document.getElementById('versionChart'), {
+  type:'bar',
+  data:{labels:kpiNames,
+        datasets:[
+          {label:'v1 Original', data:v1vals, backgroundColor:'rgba(79,142,247,.6)',  borderRadius:4},
+          {label:'v2 Corrected',data:v2vals, backgroundColor:'rgba(34,197,94,.6)',   borderRadius:4}
+        ]},
+  options:{responsive:true,maintainAspectRatio:false,
+           plugins:{legend:{labels:{color:'#e2e8f0'}}},
+           scales:{x:{ticks:{color:'#94a3b8',font:{size:9}},grid:{color:'#2d3348'}},
+                   y:{ticks:{color:'#94a3b8'},grid:{color:'#2d3348'}}}}
+});
+</script>
+{% endif %}
+
+</main>
+</body>
+</html>
